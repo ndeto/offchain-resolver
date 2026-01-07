@@ -1,0 +1,12 @@
+{
+  "name": "offchain-resolver",
+  "version": "1.0.0",
+  "description": "",
+  "license": "MIT",
+  "author": "ndeto",
+  "type": "commonjs",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
