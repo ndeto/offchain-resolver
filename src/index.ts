@@ -69,6 +69,18 @@ const SOLIDITY_ERROR = [
   },
 ] as const;
 
+type ReadTextArgs = {
+  address: `0x${string}`;
+  node: `0x${string}`;
+  key: string;
+};
+
+type ReadDataArgs = {
+  address: `0x${string}`;
+  node: `0x${string}`;
+  key: string;
+};
+
 loadEnvFile(".env.local");
 loadEnvFile(".env");
 
@@ -127,13 +139,17 @@ app.post(["/", "/agent-delegations"], async (req, res) => {
     }
 
     const isText = kind === 0;
-    const response = await client.readContract({
-      address: resolverAddress as `0x${string}`,
-      abi: isText ? TEXT_ABI : DATA_ABI,
-      functionName: isText ? "text" : "data",
-      args: [node as `0x${string}`, key],
-      authorizationList: [],
-    });
+    const response = isText
+      ? await readText({
+          address: resolverAddress as `0x${string}`,
+          node: node as `0x${string}`,
+          key,
+        })
+      : await readData({
+          address: resolverAddress as `0x${string}`,
+          node: node as `0x${string}`,
+          key,
+        });
 
     const encoded = isText
       ? encodeAbiParameters([{ type: "string" }], [response as string])
@@ -153,7 +169,7 @@ app.all("*", (_req, res) => {
 export default app;
 
 if (require.main === module) {
-  const port = Number(process.env.PORT ?? 8787);
+  const port = Number(process.env.PORT ?? 3000);
   app.listen(port, () => {
     console.log(`Offchain resolver listening on http://localhost:${port}`);
   });
@@ -216,7 +232,9 @@ async function tryHandleBatchGateway(
   }
 }
 
-async function resolveDirectRequest(data: `0x${string}`): Promise<`0x${string}`> {
+async function resolveDirectRequest(
+  data: `0x${string}`
+): Promise<`0x${string}`> {
   // Resolve a single CCIP-Read payload against the onchain resolver.
   const [kind, node, key] = decodeAbiParameters(
     [{ type: "uint8" }, { type: "bytes32" }, { type: "string" }],
@@ -228,13 +246,17 @@ async function resolveDirectRequest(data: `0x${string}`): Promise<`0x${string}`>
   }
 
   const isText = kind === 0;
-  const response = await client.readContract({
-    address: resolverAddress as `0x${string}`,
-    abi: isText ? TEXT_ABI : DATA_ABI,
-    functionName: isText ? "text" : "data",
-    args: [node as `0x${string}`, key],
-    authorizationList: [],
-  });
+  const response = isText
+    ? await readText({
+        address: resolverAddress as `0x${string}`,
+        node: node as `0x${string}`,
+        key,
+      })
+    : await readData({
+        address: resolverAddress as `0x${string}`,
+        node: node as `0x${string}`,
+        key,
+      });
 
   return isText
     ? encodeAbiParameters([{ type: "string" }], [response as string])
@@ -243,13 +265,32 @@ async function resolveDirectRequest(data: `0x${string}`): Promise<`0x${string}`>
 
 function encodeBatchError(error: unknown): `0x${string}` {
   // Encode an error as a Solidity Error(string) for batch responses.
-  const message =
-    error instanceof Error ? error.message : "Gateway error";
+  const message = error instanceof Error ? error.message : "Gateway error";
   return encodeErrorResult({
     abi: SOLIDITY_ERROR,
     errorName: "Error",
     args: [message],
   });
+}
+
+async function readText(args: ReadTextArgs): Promise<string> {
+  const { address, node, key } = args;
+  return client.readContract({
+    address,
+    abi: TEXT_ABI,
+    functionName: "text",
+    args: [node, key],
+  } as unknown as Parameters<typeof client.readContract>[0]) as Promise<string>;
+}
+
+async function readData(args: ReadDataArgs): Promise<`0x${string}`> {
+  const { address, node, key } = args;
+  return client.readContract({
+    address,
+    abi: DATA_ABI,
+    functionName: "data",
+    args: [node, key],
+  } as unknown as Parameters<typeof client.readContract>[0]) as Promise<`0x${string}`>;
 }
 
 function loadEnvFile(filename: string): void {
